@@ -11,9 +11,8 @@ import requests
 class HoverException(Exception):
     pass
 
-
-class HoverClient(object):
-    def __init__(self, username, password, domain_name):
+class HoverAPI(object):
+    def __init__(self, username, password):
 
         params = {"username": username, "password": password}
         r = requests.post("https://www.hover.com/api/login", params=params)
@@ -21,6 +20,26 @@ class HoverClient(object):
         if not r.ok or "hoverauth" not in r.cookies:
             raise HoverException("{0}:{1}".format(r.status_code, r.json()["error"]))
         self.cookies = {"hoverauth": r.cookies["hoverauth"]}
+
+    def call(self, method, resource, data=None):
+        url = "https://www.hover.com/api/{0}".format(resource)
+        r = requests.request(method, url, data=data, cookies=self.cookies)
+
+        if not r.ok:
+            raise HoverException("{0}:{1}".format(r.status_code, r.json()["error"]))
+        if r.content:
+            body = r.json()
+            if "succeeded" not in body or body["succeeded"] is not True:
+                raise HoverException(body)
+            return body
+
+    def get_list_of_domains(self):
+        return (current_domain["domain_name"] for current_domain in self.call("get", "domains")["domains"])
+
+class HoverClient(HoverAPI):
+
+    def __init__(self, username, password, domain_name):
+        HoverAPI.__init__(self, username, password)
 
         dns = self.call("get", "dns")
         self.domain = None
@@ -36,21 +55,12 @@ class HoverClient(object):
     def dns_id(self):
         return self.domain["id"]
 
-    def call(self, method, resource, data=None):
-        url = "https://www.hover.com/api/{0}".format(resource)
-        r = requests.request(method, url, data=data, cookies=self.cookies)
-
-        if not r.ok:
-            raise HoverException("{0}:{1}".format(r.status_code, r.json()["error"]))
-        if r.content:
-            body = r.json()
-            if "succeeded" not in body or body["succeeded"] is not True:
-                raise HoverException(body)
-            return body
-
     def add_record(self, type, name, content):
         record = {"name": name, "type": type, "content": content}
         return self.call("post", "domains/{0}/dns".format(self.dns_id), record)
+
+    def get_all_records(self):
+        return self.call("get", "domains/{0}/dns".format(self.dns_id))["domains"][0]["entries"]
 
     def get_record(self, type, name):
 
@@ -65,14 +75,17 @@ class HoverClient(object):
 
         return None
 
+    def update_record_by_id(self, record_id, content):
+        return self.call("put",
+                         "dns/{0}".format(record_id),
+                         {"content": content})
+
     def update_record(self, type, name, content):
 
         record = self.get_record(type, name)
 
         if record is not None:
-            return self.call("put",
-                             "dns/{0}".format(record["id"]),
-                             {"content": content})
+            return self.update_record_by_id(record["id"],)
         else:
             raise HoverException("Record not found")
 

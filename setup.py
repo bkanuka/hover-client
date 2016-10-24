@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name="hover-client",
-    version="0.1",
+    version="0.2",
     description="Python client for the undocumented, unofficial Hover.com API.",
     author="Chris Young - based on work by Dan Krause",
     license="LICENSE.md",
